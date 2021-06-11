@@ -1,8 +1,10 @@
 package gee
 
 import (
+	"fileServer"
 	"log"
 	"net/http"
+	"path"
 	"strings"
 	"time"
 )
@@ -94,4 +96,24 @@ func Logger() HandlerFunc {
 		// Calculate resolution time
 		log.Printf("[%d] %s in %v", c.StatusCode, c.Req.RequestURI, time.Since(t))
 	}
+}
+
+// serve static file
+func (group *RouterGroup) createStaticHandler(relativePath string, fs http.FileSystem) {
+	absolutePath := path.Join(group.prefix, relativePath)
+	fileServer := http.StripPrefix(absolutePath, http.FileServer(fs))
+	return func(c *Context) {
+		file := c.Param("filepath")
+		if _, err := fs.Open(file); err != nil {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		fileServer.ServeHttp(c.Writer, c.Req)
+	}
+}
+
+func (group *RouterGroup) Static(relativePath string, root string) {
+	handler := createStaticHandler(relativePath, http.Dir(root))
+	url := path.Join(relativePath, "/*filepath")
+	group.GET(url, handler)
 }

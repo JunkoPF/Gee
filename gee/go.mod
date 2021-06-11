@@ -1,3 +1,3 @@
-module gee.go
+module gee
 
 go 1.16

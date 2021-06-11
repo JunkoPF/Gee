@@ -4,15 +4,16 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type HandlerFunc func(*Context)
 
 type RouterGroup struct {
-	prefix string
-	//middleware []HandlerFunc
-	parent *RouterGroup
-	engine *Engine
+	prefix      string
+	middlewares []HandlerFunc
+	parent      *RouterGroup
+	engine      *Engine
 }
 
 type Engine struct {
@@ -48,8 +49,15 @@ func (group *RouterGroup) addRoute(method string, comp string, handler HandlerFu
 	pattern = strings.TrimRightFunc(pattern, func(ch rune) bool {
 		return ch == '/'
 	})
+	if len(pattern) == 0 {
+		pattern = "/"
+	}
 	log.Printf("Route %4s - %s", method, pattern)
 	group.engine.router.addRoute(method, pattern, handler)
+}
+
+func (group *RouterGroup) Use(middlewares ...HandlerFunc) {
+	group.middlewares = append(group.middlewares, middlewares...)
 }
 
 func (group *RouterGroup) GET(pattern string, handler HandlerFunc) {
@@ -65,6 +73,25 @@ func (engine *Engine) Run(addr string) (err error) {
 }
 
 func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	middlewares := make([]HandlerFunc, 0)
+	for _, group := range engine.groups {
+		if strings.HasPrefix(req.URL.Path, group.prefix) {
+			middlewares = append(middlewares, group.middlewares...)
+		}
+	}
 	c := newContext(w, req)
+	c.handlers = middlewares
 	engine.router.handle(c)
+}
+
+// middleware
+func Logger() HandlerFunc {
+	return func(c *Context) {
+		// Start timer
+		t := time.Now()
+		// Process request
+		c.Next()
+		// Calculate resolution time
+		log.Printf("[%d] %s in %v", c.StatusCode, c.Req.RequestURI, time.Since(t))
+	}
 }
